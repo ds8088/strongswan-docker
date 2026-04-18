@@ -1,0 +1,11 @@
+*
+!.editorconfig
+!.gitignore
+!Dockerfile
+!entrypoint.sh
+!README.md
+!UNLICENSE
+
+!.github
+!.github/workflows
+!.github/workflows/*.yml
