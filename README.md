@@ -30,11 +30,31 @@ A single volume mounted at `/config` with the following files:
 - `/config/strongswan.conf`: strongSwan configuration file
 - `/config/swanctl.conf`: swanctl configuration file
 - `/config/rules.nft`: nftables rules in nft format
-- `/config/certs/ca.crt`: CA certificate
 - `/config/certs/cert.crt`: strongSwan certificate
 - `/config/certs/key.key`: strongSwan private key
+- `/config/certs/ca.crt`: single CA certificate (optional)
+- `/config/certs/ca/`: directory of CA certificates (optional)
 
 Configuration files should preferably use the new strongswan.conf-style syntax.
+
+### Certificates
+
+`certs/cert.crt` may contain a full certificate chain, including the root.
+
+If so, the entrypoint script splits it on load:
+
+- the first block is considered to be the leaf certificate.
+  It is installed into `x509`;
+- the intermediate CA certificates are written to their own files
+  to the `x509ca` directory (one cert - one file);
+- the final block is assumed to be the root CA and is simply elided.
+
+CA certificates can also be supplied directly without splitting anything:
+
+- `certs/ca.crt`: a single CA certificate, installed into `x509ca`;
+- `certs/ca/`: a directory with CA files, copied into `x509ca`.
+
+These copying/splitting operations are additive and all run on every reload.
 
 ## Automatic reloading
 

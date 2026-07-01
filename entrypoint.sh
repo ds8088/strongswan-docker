@@ -5,6 +5,79 @@ CONFIG_DIR="${CONFIG_DIR:-/config}"
 CERTS_DIR="${CONFIG_DIR}/certs"
 VICI_SOCKET="${VICI_SOCKET:-/run/charon.vici}"
 
+# split_chain splits a certificate into multiple certificates (see README.md).
+split_chain() {
+    src="$1"
+    tmp="$(mktemp -d)" # We need a temporary directory to hold the certificates.
+
+    # A small AWK snippet that splits the chain into one file per each block.
+    awk -v dir="$tmp" '
+        /-----BEGIN CERTIFICATE-----/ { out = sprintf("%s/block-%03d.pem", dir, ++n) }
+        out { print > out }
+    ' "$src"
+
+    # Glob-expand the directory.
+    set -- "$tmp"/block-*.pem
+    if [ ! -e "$1" ]; then
+        echo "warning: no certificates found in ${src}"
+        rm -rf "$tmp"
+        return
+    fi
+
+    # Finally, copy all certificates that we've found.
+    count=$#
+    idx=0
+    for block in "$@"; do
+        idx=$((idx + 1))
+        if [ "$idx" -eq 1 ]; then
+            # idx=1: this is a leaf certificate.
+            cp "$block" /etc/swanctl/x509/server.pem
+        elif [ "$idx" -eq "$count" ]; then
+            # idx=count: this is the root CA, do nothing.
+            :
+        else
+            # Otherwise, it's an intermediate CA.
+            cp "$block" "$(printf '/etc/swanctl/x509ca/chain-%02d.pem' "$idx")"
+        fi
+    done
+
+    rm -rf "$tmp"
+}
+
+# install_certs sets up certificates.
+install_certs() {
+    # Clear the directories.
+    rm -f /etc/swanctl/x509/*.pem /etc/swanctl/x509ca/*.pem
+
+    # Install certificate (or a chain, which will require splitting).
+    if [ -f "${CERTS_DIR}/cert.crt" ]; then
+        echo "installing certificate (splitting full chain)"
+        split_chain "${CERTS_DIR}/cert.crt"
+    fi
+
+    # Single-file CA.
+    if [ -f "${CERTS_DIR}/ca.crt" ]; then
+        echo "installing CA certificate"
+        cp "${CERTS_DIR}/ca.crt" /etc/swanctl/x509ca/ca.pem
+    fi
+
+    # Directory of CA files.
+    if [ -d "${CERTS_DIR}/ca" ]; then
+        for ca in "${CERTS_DIR}"/ca/*; do
+            [ -e "$ca" ] || continue
+            echo "installing CA certificate $(basename "$ca")"
+            cp "$ca" "/etc/swanctl/x509ca/$(basename "$ca")"
+        done
+    fi
+
+    # Private key.
+    if [ -f "${CERTS_DIR}/key.key" ]; then
+        echo "installing private key"
+        cp "${CERTS_DIR}/key.key" /etc/swanctl/private/server.pem
+        chmod u=rw,g=,o= /etc/swanctl/private/server.pem
+    fi
+}
+
 # install_config copies configuration files from a mounted volume.
 install_config() {
     # Apply nftables rules
@@ -26,21 +99,7 @@ install_config() {
     fi
 
     # Install certificates
-    if [ -f "${CERTS_DIR}/ca.crt" ]; then
-        echo "installing CA certificate"
-        cp "${CERTS_DIR}/ca.crt" /etc/swanctl/x509ca/server.pem
-    fi
-
-    if [ -f "${CERTS_DIR}/cert.crt" ]; then
-        echo "installing certificate"
-        cp "${CERTS_DIR}/cert.crt" /etc/swanctl/x509/server.pem
-    fi
-
-    if [ -f "${CERTS_DIR}/key.key" ]; then
-        echo "installing private key"
-        cp "${CERTS_DIR}/key.key" /etc/swanctl/private/server.pem
-        chmod u=rw,g=,o= /etc/swanctl/private/server.pem
-    fi
+    install_certs
 }
 
 # watch_config watches for config/cert changes and reloads strongSwan.

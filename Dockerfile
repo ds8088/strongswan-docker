@@ -14,9 +14,10 @@ RUN chmod +x /entrypoint.sh
 # /config/strongswan.conf: strongSwan config
 # /config/swanctl.conf: swanctl config
 # /config/rules.nft: nftables rule file
-# /config/certs/ca.crt: CA certificate
-# /config/certs/cert.crt: strongSwan certificate
+# /config/certs/cert.crt: strongSwan certificate (or full certificate chain)
 # /config/certs/key.key: strongSwan private key
+# /config/certs/ca.crt: single CA certificate (optional)
+# /config/certs/ca/: directory of CA certificates (optional)
 
 VOLUME ["/config"]
 
