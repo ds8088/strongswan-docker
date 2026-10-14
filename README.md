@@ -39,15 +39,14 @@ Configuration files should preferably use the new strongswan.conf-style syntax.
 
 ### Certificates
 
-`certs/cert.crt` may contain a full certificate chain, including the root.
+`certs/cert.crt` may contain a full certificate chain.
+The leaf should be the first certificate.
 
-If so, the entrypoint script splits it on load:
+If so, the entrypoint script sets the certificates as such:
 
-- the first block is considered to be the leaf certificate.
-  It is installed into `x509`;
-- the intermediate CA certificates are written to their own files
-  to the `x509ca` directory (one cert - one file);
-- the final block is assumed to be the root CA and is simply elided.
+- the whole file is installed to `x509/server.pem`;
+- strongSwan uses its first block as the end-entity certificate;
+- all the remaining blocks are written to their own file in `x509ca` (`cert-01.pem`, ...).
 
 CA certificates can also be supplied directly without splitting anything:
 

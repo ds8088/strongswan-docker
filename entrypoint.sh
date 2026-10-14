@@ -5,43 +5,22 @@ CONFIG_DIR="${CONFIG_DIR:-/config}"
 CERTS_DIR="${CONFIG_DIR}/certs"
 VICI_SOCKET="${VICI_SOCKET:-/run/charon.vici}"
 
-# split_chain splits a certificate into multiple certificates (see README.md).
+# split_chain installs a certificate chain (see README.md).
 split_chain() {
     src="$1"
-    tmp="$(mktemp -d)" # We need a temporary directory to hold the certificates.
 
-    # A small AWK snippet that splits the chain into one file per each block.
-    awk -v dir="$tmp" '
-        /-----BEGIN CERTIFICATE-----/ { out = sprintf("%s/block-%03d.pem", dir, ++n) }
-        out { print > out }
-    ' "$src"
-
-    # Glob-expand the directory.
-    set -- "$tmp"/block-*.pem
-    if [ ! -e "$1" ]; then
+    if ! grep -q -- '-----BEGIN CERTIFICATE-----' "$src"; then
         echo "warning: no certificates found in ${src}"
-        rm -rf "$tmp"
         return
     fi
 
-    # Finally, copy all certificates that we've found.
-    count=$#
-    idx=0
-    for block in "$@"; do
-        idx=$((idx + 1))
-        if [ "$idx" -eq 1 ]; then
-            # idx=1: this is a leaf certificate.
-            cp "$block" /etc/swanctl/x509/server.pem
-        elif [ "$idx" -eq "$count" ]; then
-            # idx=count: this is the root CA, do nothing.
-            :
-        else
-            # Otherwise, it's an intermediate CA.
-            cp "$block" "$(printf '/etc/swanctl/x509ca/chain-%02d.pem' "$idx")"
-        fi
-    done
+    install -m 0600 "$src" /etc/swanctl/x509/server.pem
 
-    rm -rf "$tmp"
+    # A small AWK snippet that writes each block after the first into its own file.
+    awk -v dir=/etc/swanctl/x509ca '
+        /-----BEGIN CERTIFICATE-----/ { out = (++n > 1) ? sprintf("%s/cert-%02d.pem", dir, n - 1) : "" }
+        out { print > out }
+    ' "$src"
 }
 
 # install_certs sets up certificates.
@@ -76,6 +55,12 @@ install_certs() {
         cp "${CERTS_DIR}/key.key" /etc/swanctl/private/server.pem
         chmod u=rw,g=,o= /etc/swanctl/private/server.pem
     fi
+
+    chmod 0700 /etc/swanctl/x509ca
+    for cert in /etc/swanctl/x509ca/*; do
+        [ -e "$cert" ] || continue
+        chmod 0600 "$cert"
+    done
 }
 
 # install_config copies configuration files from a mounted volume.
